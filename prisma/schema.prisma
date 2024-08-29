@@ -1,0 +1,284 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider     = "mysql"
+  url          = env("DATABASE_URL")
+  relationMode = "prisma"
+}
+
+model Ticket {
+  id               Int               @id @default(autoincrement())
+  title            String            @db.VarChar(255)
+  description      String            @db.Text
+  status           Status            @default(OPEN)
+  priority         Priority          @default(MEDIUM)
+  assignmentgroup  AssignmentGroup?
+  taskCategory     TaskCategory?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  dueDate          DateTime?
+  assignedToUserId Int?
+  assignedToUser   User?             @relation(name: "AssignedTickets", fields: [assignedToUserId], references: [id])
+  createdByUserId  Int
+  createdByUser    User              @relation(name: "CreatedTickets", fields: [createdByUserId], references: [id])
+  checkinCheckouts CheckinCheckout[] @relation("TicketCheckinCheckouts")
+  deviceId         Int?
+  device           Device?           @relation(fields: [deviceId], references: [id], name: "TicketDevice")
+  worknotes        Worknote[]        @relation("TicketWorknotesRelation") // Corrected relation
+
+  @@index([assignedToUserId])
+  @@index([deviceId])
+
+  @@map("ticket")
+}
+
+model Device {
+  id                     Int                     @id @default(autoincrement())
+  serialnumber           String                  @unique @db.VarChar(255)
+  title                  String                  @db.VarChar(255)
+  specifications         String                  @db.Text
+  leaseEndDate           DateTime
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  inOutStatus            InOutStatus
+  modelCategory          ModelCategory
+  status                 DeviceStatus
+  substatus              DeviceSubstatus
+  rack                   String?                 @default("NULL_PLACEHOLDER")
+  shelf                  String?                 @default("NULL_PLACEHOLDER")
+  country                String?
+  project                String?
+  assignedToUserId       Int?
+  assignedToUser         User?                   @relation(fields: [assignedToUserId], references: [id])
+  checkinCheckouts       CheckinCheckout[]       @relation("DeviceCheckinCheckouts")
+  tickets                Ticket[]                @relation("TicketDevice")
+  statusSubstatusChanges StatusSubstatusChange[] @relation("DeviceStatusSubstatusChanges") // Ensure this line is added
+
+  rackShelfId Int?
+  rackShelf   RackShelf? @relation(fields: [rackShelfId], references: [id])
+
+  defectiveDevices DefectiveDevice[] // Removed @relation("DeviceDefectiveDevices")
+
+  @@index([assignedToUserId])
+  @@index([rackShelfId])
+  @@map("device")
+}
+
+model CheckinCheckout {
+  id        Int      @id @default(autoincrement())
+  deviceId  Int
+  userId    Int
+  ticketId  Int?
+  action    Action
+  timestamp DateTime @default(now())
+  rack      String?  @default("NULL_PLACEHOLDER")
+  shelf     String?  @default("NULL_PLACEHOLDER")
+
+  device      Device     @relation("DeviceCheckinCheckouts", fields: [deviceId], references: [id])
+  user        User       @relation("UserCheckinCheckouts", fields: [userId], references: [id])
+  ticket      Ticket?    @relation("TicketCheckinCheckouts", fields: [ticketId], references: [id])
+  rackShelfId Int?
+  rackShelf   RackShelf? @relation(fields: [rackShelfId], references: [id])
+
+  @@index([deviceId])
+  @@index([userId])
+  @@index([ticketId])
+  @@index([rackShelfId])
+  @@map("checkincheckout")
+}
+
+model StatusSubstatusChange {
+  id           Int              @id @default(autoincrement())
+  deviceId     Int
+  userId       Int
+  oldStatus    DeviceStatus?
+  newStatus    DeviceStatus
+  oldSubstatus DeviceSubstatus?
+  newSubstatus DeviceSubstatus
+  changedAt    DateTime         @default(now())
+
+  device Device @relation("DeviceStatusSubstatusChanges", fields: [deviceId], references: [id], map: "StatusSubstatusChange_deviceId_fkey")
+  user   User   @relation("UserStatusSubstatusChanges", fields: [userId], references: [id], map: "StatusSubstatusChange_userId_fkey")
+
+  @@index([deviceId])
+  @@index([userId])
+  @@map("statussubstatuschange")
+}
+
+model RackShelf {
+  id              Int               @id @default(autoincrement())
+  country         String            @db.VarChar(2)
+  project         String            @db.VarChar(255)
+  rack            String            @db.VarChar(255)
+  shelf           String            @db.VarChar(255)
+  Device          Device[]
+  CheckinCheckout CheckinCheckout[]
+
+  @@unique([country, project, rack, shelf], name: "unique_country_project_rack_shelf")
+  @@index([country, project, rack, shelf], name: "idx_rack_shelf")
+  @@map("rackshelf")
+}
+
+model User {
+  id                     Int                     @id @default(autoincrement())
+  name                   String
+  username               String                  @unique
+  password               String
+  role                   Role                    @default(USER)
+  assignedTickets        Ticket[]                @relation(name: "AssignedTickets")
+  createdTickets         Ticket[]                @relation(name: "CreatedTickets")
+  assignedDevices        Device[]
+  checkinCheckouts       CheckinCheckout[]       @relation("UserCheckinCheckouts")
+  worknotes              Worknote[]              @relation("UserWorknotesRelation")
+  statusSubstatusChanges StatusSubstatusChange[] @relation("UserStatusSubstatusChanges") 
+  @@map("user")
+}
+
+model Worknote {
+  id              Int      @id @default(autoincrement())
+  content         String   @db.Text
+  customervisible Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  ticketId        Int
+  userId          Int
+  ticket          Ticket   @relation(fields: [ticketId], references: [id], name: "TicketWorknotesRelation")
+  user            User     @relation(fields: [userId], references: [id], name: "UserWorknotesRelation")
+  @@map("worknote")
+}
+
+model DefectiveDevice {
+  id                       Int             @id @default(autoincrement())
+  serialnumber             String          @db.VarChar(255) // Not unique here
+  entryid                  Int?
+  sendTrackingId           String?         @db.VarChar(255)
+  receiveTrackingId        String?         @db.VarChar(255)
+  supplierRepairCaseId     String?         @db.VarChar(255)
+  defectReported           String          @db.Text
+  typeOfRepair             TypeOfRepair?
+  dateCourierReceivedAsset DateTime?
+  dateWHReceivedAsset      DateTime?
+  currentLocation          CurrentLocation
+  partsReplaced            String?         @db.Text // Storing as a JSON or comma-separated string
+  notes                    String?         @db.Text
+  quotationAmount          Float?
+  repairedBy               RepairedBy?
+  createdAt                DateTime        @default(now())
+  updatedAt                DateTime        @updatedAt
+  deviceId                 Int
+  device                   Device          @relation(fields: [deviceId], references: [id])
+
+  @@index([deviceId])
+  @@map("defectivedevice")
+}
+
+enum TypeOfRepair {
+  IW // In-Warranty
+  OOW // Out-Of-Warranty
+  BOTH
+  OTHER
+}
+
+enum CurrentLocation {
+  Warehouse
+  Courier
+  Supplier
+}
+
+enum RepairedBy {
+  Supplier
+  OurTeam
+  NotRepaired
+  Other
+}
+
+enum Action {
+  CHECKIN
+  CHECKOUT
+  CHANGERACK
+  CHANGESHELF
+}
+
+enum InOutStatus {
+  CHECKEDIN
+  CHECKEDOUT
+}
+
+enum Status {
+  OPEN
+  STARTED
+  CLOSED
+  PENDING
+  CANCELLED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum Role {
+  ADMIN
+  TECH
+  USER
+}
+
+enum AssignmentGroup {
+  WAREHOUSE
+  HUB
+  DISPATCH
+  CONSULTANT
+  OTHER
+}
+
+enum TaskCategory {
+  IMAGING
+  INSTALLATION
+  DEINSTALLATION
+  DISKKILL
+  CHECKIN
+  CHECKOUT
+  REFURBISHMENT
+  PALLET
+  OTHER
+}
+
+enum ModelCategory {
+  Laptop
+  Desktop
+  DesktopMini
+  StandardMonitor
+  Monitor
+  MonitorWithDock
+  ConferenceMonitor
+  Dockstation
+  Tablet
+  Other
+}
+
+enum DeviceStatus {
+  InTransit
+  InStock
+  InUse
+  Missing
+  Retired
+  OnOrder
+}
+
+enum DeviceSubstatus {
+  PendingRepair
+  PendingDisposal
+  Reserved
+  Unimaged
+  Available
+  Defective
+  PendingTransfer
+  Deactivated
+  None
+}
