@@ -1,0 +1,9 @@
+# Ignore dependencies and build directories
+node_modules
+.next
+.out
+build
+
+# Include essential files
+!package.json
+!package-lock.json
