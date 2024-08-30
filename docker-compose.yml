@@ -6,14 +6,12 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "3001:3001"
+      - "3000:3000" # Map port 3000 on the host to port 3000 in the container
     environment:
-      - PORT=3001
       - NODE_ENV=production
       - DATABASE_URL=${DATABASE_URL}
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
-      - NEXTAUTH_URL=${NEXTAUTH_URL}
+      - NEXTAUTH_URL=${NEXTAUTH_URL} # Ensure this is set to http://localhost:3000 in your .env file
     volumes:
-      - .:/app
-      - /app/node_modules
-    command: npm run start
+      - .:/app # Mount the current directory into the container
+    command: npm run start # Use npm start to run the app on port 3000
